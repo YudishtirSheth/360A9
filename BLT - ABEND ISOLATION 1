@@ -1,0 +1,355 @@
+//KC03AC1A JOB ,'Y. SHETH',MSGCLASS=H
+//JSTEP01  EXEC PGM=ASSIST
+//STEPLIB  DD DSN=KC00NIU.ASSIST.LOADLIB,DISP=SHR
+//SYSPRINT DD SYSOUT=*
+//SYSIN    DD *
+*****************************************************************
+*                                                               *
+*  CSCI 360              ASSIGNMENT 9             SPRING 2024   *
+*                       PACKED DECIMAL                          *
+*                                                               *
+*   DEVELOPER NAME: Yudishtir Sheth                             *
+*                                                               *
+*          DUE DATE: 4/19/2024                                  *
+*                                                               *
+* MAIN PROGRAM NAME: PAYROLL2                                   *
+*                                                               *
+*          FUNCTION: This program produces a report             *
+*                    of semi-monthly payroll for State of       *
+*                    Illinois National Bank using               *
+*                    sub programs.                              *
+*                                                               *
+*****************************************************************
+*
+PAYROLL2 CSECT
+*
+*  STANDARD ENTRY LINKAGE WITH R12 AS BASE REGISTER
+*
+         STM   14,12,12(13)  SAVE REGS IN CALLER'S SAVE AREA
+         LR    12,15         COPY CSECT ADDR INTO R12
+         USING PAYROLL2,12   ESTABLISH R12 AS THE BASE REG
+         LA    14,REGSAVE    R14 POINTS TO THIS CSECT'S SAVE AREA
+         ST    14,8(,13)     STORE ADDR OF THIS CSECT'S SAVE AREA
+         ST    13,4(,14)     STORE ADDR OF CALLER'S SAVE AREA
+         LR    13,14         POINT R13 AT THIS CSECT'S SAVE AREA
+*
+*
+*  BUIDL TABLE HAS 120 ENTRIES OF 42 BYTES. EQUIVALENT TO 5040
+*  BYTES THEREFORE WE NEED TO ESTABLISH A SECOND BASE REG
+*
+         LA    11,4095(,12)  R11 -> PAYROLL2
+         LA    11,1(,11)     R11 -> PAYROLL2+4096
+         USING PAYROLL2+4096,11  ESTABLISH R11 TO TAKE OVER
+*
+*  CALL TO SUBPROGRAM:BUILDTBLE TO BUILD THE TABLE
+*
+         L     1,BTPARMS     POINT R1 TO FIRST BYTE OF BTPARMS
+         LA    15,=V(BUILDTBL)  VIRTUAL ADDR OF SUBP IN R15
+         BALR  14,15         LAST 3 BYTES OF PSW IN R14
+*
+*         DC    H'0'
+*
+*  STANDARD EXIT LINKAGE WITH RC OF 0
+*
+         SR    15,15        R15 = RETURN CODE OF 0
+         L     13,4(,13)    POINT R13 TO CALLER'S SAVE AREA
+         L     14,12(,13)   RESTORE REGISTER 14
+         LM    0,12,20(13)  RESTORE R0 THRU R12
+*
+         BR    14           RETURN TO CALLER
+*
+         LTORG
+*
+REGSAVE  DS    18F          PROGRAM'S REGISTER SAVE AREA
+*
+* TABLE DECLARATION
+EMPTBL   DS   120CL42      TABLE DECLARATION
+*
+* PACKED DECIMAL VARIABLES
+*
+PFWHPCT  DC    PL4'0'   PACKED FEDERAL WITHHOLDING PERCENTAGE
+PSWHPCT  DC    PL4'0'   PACKED STATE WITHHOLDING PERCENTAGE
+*
+PEMPCTR  DC    PL3'0'   PACKED EMPLOYEE COUNTER (MAX 999)
+PPAGECTR DC    PL2'0'   PACKED PAGE COUNTER (MAX 999)
+*
+PEMPID   DC    PL5'0'   PACKED EMPLOYEE ID
+PHRPAY   DC    PL3'0'   PACKED EMPLOYEE HOURLY PAY RATE
+PHOURS   DC    PL3'0'   PACKED EMPLOYEE HOURS WORKED
+PDEDUCT  DC    PL3'0'   PACKED EMPLOYEE DEDUCTION
+PBONUS   DC    PL3'0'   PACKED EMPLOYEE BONUS
+PEMPGPAY DC    PL6'0'   PACKED CALCULATED EMPLOYEE GROSS PAY
+PFEDWITH DC    PL6'0'   PACKED CALCULATED FEDERAL WITHHOLDING
+PSTWITH  DC    PL6'0'   PACKED CALCULATED STATE WITHHOLDING
+PEMPNPAY DC    PL6'0'   PACKED CALCULATED EMPLOYEE NET PAY
+*
+PCALC    DC    PL10'0'  USED TO CALCULATE WITHHOLDING AND AVGS
+*
+PTGRPAY  DC    PL7'0'   PACKED TOTAL GROSS EMPLOYEE PAY
+PTFWITH  DC    PL7'0'   PACKED TOTAL FEDERAL WITHHOLDING
+*
+PTSWITH  DC    PL7'0'   PACKED TOTAL STATE WITHHOLDING
+PTNETPAY DC    PL7'0'   PACKED TOTAL NET EMPLOYEE PAY
+*
+BTPARMS  DC    A(EMPTBL)   ADDR CONST FOR EMPTBL
+         DC    A(PFWHPCT)  ADDR CONST FOR PFWHPCT
+         DC    A(PSWHPCT)  ADDR CONST FOR PSWHPCT
+         DC    A(PEMPCTR)  ADDR CONST FOR PEMPCTR
+         DC    A(TXPRCT)   ADDR CONST FOR TAX VALS
+*
+TXPRCT   DS    0H
+IFWHPCT  DS    ZL6     INPUT FIELD FOR FEDERAL WTH PERCENTAGE
+ISWHPCT  DS    ZL6     INPUT FIELD FOR STATE WTH PERCENTAGE
+         DS    CL72
+*
+DETAIL   DC    C'0'     DETAIL LINE
+OEMPID   DS    CL10     OUTPUT FIELD FOR EMPLOYEE ID
+         DC    3C' '
+OEMPNME  DS    CL25     OUTPUT FIELD FOR EMPLOYEE NAME
+         DC    2C' '
+OHRPAY   DS    CL7      OUTPUT FIELD FOR HOURLY PAY
+         DC    4C' '
+OHOURS   DS    CL7      OUTPUT FIELD FOR HOURS WORKED
+         DC    4C' '
+OGROSS   DS    CL14     OUTPUT FIELD FOR GROSS PAY
+         DC    4C' '
+OFEDWH   DS    CL14     OUTPUT FIELD FOR XDECO OF FEDERAL WH AMT
+         DC    4C' '
+OSTWH    DS    CL14     OUTPUT FIELD FOR XDECO OF STATE WH AMT
+         DC    4C' '
+ONETPAY  DS    CL14     OUTPUT FIELD FOR XDECO OF NET PAY AMT
+         DC    2C' '
+*
+TITLE1    DC   C'0'      TITLE1 LINE
+          DC   50C' '
+          DC   C'STATE OF ILLINOIS NATIONAL BANK'
+          DC   38C' '
+          DC   C'PAGE:'  PAGE NUMBER HEADER
+          DC   4C' '
+OPAGECTR  DS   CL1       OUTPUT FIELD FOR PAGE NUMBER
+          DC   3C' '
+*
+TITLE2    DC   C'O'     TITLE2 LINE
+          DC   48C' '
+          DC   C'SEMI-MONTHLY EMPLOYEE PAYROLL REPORT'
+          DC   49C' '
+*
+TITLET    DC    62C' '  TITLET LINE
+          DC    C'TOTALS'
+          DC    65C' '
+*
+HEADER1   DC   C'0'                 HEADER1 LINE
+OHEMPID   DC   C'EMPLOYEE'          HEADER: 'EMPLOYEE'
+          DC   4C' '
+OHEMPNME  DC   C'EMPLOYEE'          HEADER: 'EMPLOYEE'
+          DC   20C' '
+OHHRPAY   DC   C'HOURLY'            HEADER: 'HOURLY'
+          DC   6C' '
+OHHOURS   DC   C'HOURS'             HEADER: 'HOURS'
+          DC   10C' '
+OHGROSS   DC   C'EMPLOYEE'          HEADER: 'EMPLOYEE'
+          DC   4C' '
+OHFEDWH   DC   C'EMPLOYEE FEDERAL'  HEADER: 'EMPLOYEE FEDERAL'
+          DC   2C' '  SPACES
+OHSTWH    DC   C'EMPLOYEE STATE'    HEADER: 'EMPLOYEE STATE'
+          DC   10C' '  SPACES
+OHNETPAY  DC   C'EMPLOYEE'          HEADER: 'EMPLOYEE'
+          DC   5C' '
+*
+HEADER2   DC    C' '                HEADER2 LINE
+OH2EMPID  DC    C'ID'               HEADER: 'ID'
+          DC    10C' '
+OH2EMPNM  DC    C'NAME'             HEADER: 'NAME'
+          DC    27C' '
+OH2HRPAY  DC    C'PAY'              HEADER: 'PAY'
+          DC    5C' '
+OH2HOURS  DC    C'WORKED'           HEADER: 'WORKED'
+          DC    9C' '
+OH2GROSS  DC    C'GROSS PAY'        HEADER: 'GROSS PAY'
+          DC    9C' '
+OH2FEDWH  DC    C'WITHHOLDING'      HEADER: 'WITHHOLDING'
+          DC    5C' '  SPACES
+OH2STWH   DC    C'WITHHOLDING'      HEADER: 'WITHHOLDING'
+          DC    11C' '  SPACES
+OH2NTPAY  DC    C'NET PAY'          HEADER: 'NET PAY'
+          DC    6C' '
+*
+HEADERL   DC    C' '                HEADERL LINE
+OHLEMPID  DC    C'----------'       10 CHAR HEADER LINE
+          DC    2C' '
+OHLEMPNM  DC    C'-------------------------'  25 CHAR HDR LINE
+          DC    2C' '
+OHLHRPAY  DC    C'-------'           7 CHAR HEADER LINE
+          DC    4C' '
+OHLHOURS  DC    C'-------'           7 CHAR HEADER LINE
+          DC    4C' '
+OHLGROSS  DC    C'--------------'   14 CHAR HEADER LINE
+          DC    4C' '
+OHLFEDWH  DC    C'----------------'  16 CHAR HEADER LINE
+          DC    2C' '  SPACES
+OHLSTWH   DC    C'--------------'   14 CHAR HEADER LINE
+          DC    4C' '  SPACES
+OHLNTPAY  DC    C'--------------'   14 CHAR HEADER LINE
+          DC    3C' '
+*
+EMPCTR    DC   C'O'                 EMPCTR LINE
+          DC   6C' '
+          DC   C'NUMBER OF EMPLOYEES:'
+          DC   13C' '
+OEMPCTR   DS   CL6                  OUTPUT FIELD FOR EMPLOYEE CT
+          DC   87C' '
+*
+OTGROSS   DC   C'O'                 OTGGROSS LINE
+          DC   10C' '
+          DC   C'TOTAL GROSS PAY:'
+          DC   6C' '
+OTGPAY    DS   CL16                 OUTPUT FIELD FOR TOTAL GPAY
+          DC   20C' '
+          DC   C'AVERAGE GROSS PAY:'
+          DC   7C' '
+OAGPAY    DS   CL16                 OUTPUT FIELD FOR AVG GPAY
+          DC   23C' '
+*
+OTFED     DC   C'O'                 OTFED LINE
+          DC   C'TOTAL FEDERAL WITHHOLDING:'
+          DC   6C' '
+OTFWITH   DS   CL16                 OUTPUT FIELD FOR TOTAL FWITH
+          DC   10C' '
+          DC   C'AVERAGE FEDERAL WITHHOLDING:'
+          DC   7C' '
+OAFWITH   DS   CL16                 OUTPUT FIELD FOR AVG FWITH
+          DC   23C' '
+*
+OTSTATE   DC   C'O'                 OTSTATE LINE
+          DC   2C' '
+          DC   C'TOTAL STATE WITHHOLDING:'
+          DC   6C' '
+OTSWITH   DS   CL16                 OUTPUT FIELD FOR TOTAL SWITH
+          DC   12C' '
+          DC   C'AVERAGE STATE WITHHOLDING:'
+          DC   7C' '
+OASWITH   DS   CL16                 OUTPUT FIELD FOR AVG SWITH
+          DC   23C' '
+*
+OTNPAY    DC   C'O'                 OTNPAY LINE
+          DC   12C' '
+          DC   C'TOTAL NET PAY:'
+          DC   6C' '
+OTNETPAY  DS   CL16                 OUTPUT FIELD FOR TOTAL NPAY
+          DC   22C' '
+          DC   C'AVERAGE NET PAY:'
+          DC   7C' '
+OANPAY    DS   CL16                 OUTPUT FIELD FOR AVG NPAY
+          DC   23C' '
+*
+*
+$TAXPCT  DSECT
+$FWHPCT   DS    ZL6
+$SWHPCT   DS    ZL6
+*
+$EMPENT1 DSECT           EMPLOYEE TABLE ENTRY DSECT
+$TEMPID1  DS    PL5      EMPLOYEE ID NUMBER
+$THRPAY1  DS    PL3      HOURLY PAY RATE
+$THOURS1  DS    PL3      HOURS WORKED
+$TDEDCT1  DS    PL3      DEDUCTIONS
+$TBONUS1  DS    PL3      BONUS EARNED
+$TEMPNM1  DS    CL25     EMPLOYEE NAME
+*
+$INPREC1 DSECT           INPUT RECORD DSECT
+$IEMPID1  DS    ZL8      INPUT FIELD TO STORE EMPLOYEE ID
+$IHRPAY1  DS    ZL5      INPUT FIELD TO STORE HOURLY PAY
+$IHOURS1  DS    ZL5      INPUT FIELD TO STORE HOURS WORKED
+$IDEDCT1  DS    ZL5      INPUT FIELD TO STORE DEDUCTIONS
+$IBONUS1  DS    ZL5      INPUT FIELD TO STORE BONUS
+$IEMPNM1  DS    CL25     INPUT FIELD TO STORE EMPLOYEE NAME
+*
+BUILDTBL  CSECT
+*
+*  STANDARD ENTRY LINKAGE WITH R12 AS BASE REGISTER
+*
+         STM   14,12,12(13)  SAVE REGS IN CALLER'S SAVE AREA
+         LR    12,15         COPY CSECT ADDR INTO R12
+         USING BUILDTBL,12   ESTABLISH R12 AS THE BASE REG
+         LA    14,BLTSAVE    R14 POINTS TO THIS CSECT'S SAVE AREA
+         ST    14,8(,13)     STORE ADDR OF THIS CSECT'S SAVE AREA
+         ST    13,4(,14)     STORE ADDR OF CALLER'S SAVE AREA
+         LR    13,14         POINT R13 AT THIS CSECT'S SAVE AREA
+*
+         LM    2,6,0(1)       R2 -> EMPTBL  (5040 BYTES)
+*                             R3 -> PFWHPCT (4 BYTES)
+*                             R4 -> PSWHPCT (4 BYTES)
+*                             R5 -> PEMPCTR (3 BYTES)
+*                             R6 -> INPUT TAXVAL (80)
+*
+         USING $TAXPCT,6
+         XREAD $TAXPCT,80       READ THE FIRST RECORD (TAXVALS)
+*
+         PACK  0(4,3),$FWHPCT(6)  PACK 1ST 6 BYTES:FEDWITH PRCNT
+         PACK  0(4,4),$SWHPCT(6)  PACK 6 BYTES 7 OFF R6:SWITH
+*                                 PERCENT
+*
+         USING $EMPENT1,2     ASSOCIATE $EMPENT1 WITH EMPTBL
+*
+         LA    7,RECORD       LOAD INPUT RECORD INTO R7
+         USING $INPREC1,7     ASSOCIATE $INPREC1 WITH RECORD
+*
+         XREAD $INPREC1,80    PRIMARY READ EMPLOYEE RECORD
+*
+LOOP     BNZ   ENDLOOP        BRANCH TO ENDLOOP IF 0
+*
+         AP    0(3,5),=PL1'1'   INCREMENT EMPCTR
+*
+         PACK  $TEMPID1(5),$IEMPID1(8) PACK EMPLOYEE ID
+*
+         PACK  $THRPAY1(3),$IHRPAY1(5) PACK HOURLY PAY
+         PACK  $THOURS1(3),$IHOURS1(5) PACK HOURS WORKED
+         PACK  $TDEDCT1(3),$IDEDCT1(5) PACK DEDUCTIONS
+         PACK  $TBONUS1(3),$IBONUS1(5) PACK BONUS
+*
+         MVC   $TEMPNM1(25),$IEMPNM1  MOVE EMPNAME
+*
+         LA    2,42(,2)        OVERLAY NEXT ENTRY'S BYTES
+*
+         XREAD $INPREC1,80     SECONDARY READ EMPLOYEE RECORD
+*
+         B     LOOP  BRANCH BACK TO LOOP 1
+*
+*  STANDARD EXIT LINKAGE WITH RC OF 0
+*
+ENDLOOP  SR    15,15          R15 = RETURN CODE OF 0
+         DROP  2,6,7            DISSOCIATE DSECTS
+*
+         L     13,4(,13)      POINT R13 TO CALLER'S SAVE AREA
+         L     14,12(,13)     RESTORE REGISTER 14
+         LM    0,12,20(13)    RESTORE R0 THRU R12
+*
+         BR    14             RETURN TO CALLER
+*
+         LTORG
+*
+         ORG   BUILDTBL+((*-BUILDTBL+31)/32)*32
+         DC    C'* PROGRAM STORAGE FOR BUILDTBL *'
+*
+BLTSAVE  DS    18F          PROGRAM'S REGISTER SAVE AREA
+*
+RECORD   DS    0H       INPUT FIELD OF ZEROS
+IEMPID   DS    ZL8      INPUT FIELD TO STORE EMPLOYEE ID
+IHRPAY   DS    ZL5      INPUT FIELD TO STORE HOURLY PAY
+IHOURS   DS    ZL5      INPUT FIELD TO STORE HOURS WORKED
+IDEDUCT  DS    ZL5      INPUT FIELD TO STORE DEDUCTIONS
+IBONUS   DS    ZL5      INPUT FIELD TO STORE BONUS
+IEMPNME  DS    CL25     INPUT FIELD TO STORE EMPLOYEE NAME
+         DS    CL27
+*
+         END   PAYROLL2
+/*
+//*
+//* THE FOLLOWING IS THE INPUT DATA SET
+//*
+//FT05F001 DD DSN=KC02322.CSCI360.DATASP24(DATA9),DISP=SHR
+//*
+//* THE FOLLOWING IS THE OUTPUT DATA SET
+//*
+//FT06F001 DD SYSOUT=*
+//*
+//
